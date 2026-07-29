@@ -9,7 +9,7 @@ import sys
 
 def install_deps():
     print("⏳ Installing pinned dependencies and cloning YOLOv5...", flush=True)
-
+    print("⏳ This may take a few minutes. Get the kettle on.", flush=True)
     # 1. Pinned dependencies
     dependencies = [
         "numpy==1.26.4", "pandas==2.2.2", "scipy<1.14",
@@ -47,6 +47,19 @@ def install_deps():
         sys.exit(1)
 
     print("✅ Environment setup complete. YOLOv5 cloned and ready.", flush=True)
+
+    # Create working directories
+    directories = ["model", "input", "output", "model/weights", "model/trained"]
+    for directory in directories:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            print(f"Directory '{directory}' created.")
+        else:
+            print(f"Directory '{directory}' already exists.")
+
+    global trained_dir, weights_dir
+    trained_dir = "model/trained"
+    weights_dir = "model/weights"
 
 
 if __name__ == "__main__":
