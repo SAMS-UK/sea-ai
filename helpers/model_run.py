@@ -3,7 +3,7 @@ import sys
 
 
 def run_pipeline(coords, video, trained_model, weights, time_interval,
-                  worker_script="sea-ai/helpers/pipeline_worker.py"):
+                  worker_script="sea-ai/helpers/model_run.py"):
     """
     Runs pipeline_worker.py in an isolated subprocess. See that file's own
     docstring for why: Colab's kernel pre-imports numpy at startup, so pip
