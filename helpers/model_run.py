@@ -3,14 +3,14 @@ import sys
 
 
 def run_pipeline(coords, video, trained_model, weights, time_interval,
-                  worker_script="sea-ai/helpers/model_run.py"):
+                  worker_script="sea-ai/helpers/classifier.py"):
     """
     Runs pipeline_worker.py in an isolated subprocess. See that file's own
     docstring for why: Colab's kernel pre-imports numpy at startup, so pip
     installing a pinned version afterward has no effect on the running kernel
     — only a fresh process picks it up.
 
-    Streams output live (rather than capturing and printing at the end) so
+    Streams output live (rather than capturing and prpipeline_workerinting at the end) so
     progress is visible during long-running video processing.
     """
     print("🚀 Running pipeline in an isolated subprocess...")
