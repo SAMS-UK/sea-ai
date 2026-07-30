@@ -24,12 +24,14 @@ from fastai.vision.all import load_learner, defaults
 @contextmanager
 def set_posix_windows():
     """Needed if the model was exported on Linux and is being loaded elsewhere."""
+    # Temporarily patch pathlib so Linux can read the Windows-exported model
+    import pathlib
     posix_backup = pathlib.PosixPath
     try:
         pathlib.PosixPath = pathlib.WindowsPath
-        yield
+        learner = load_learner(args.trained_model, cpu=(device.type == "cpu"))
     finally:
-        pathlib.PosixPath = os.environ.get("POSIX_BACKUP", posix_backup)
+        pathlib.PosixPath = posix_backup
 
 
 def main():
