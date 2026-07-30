@@ -22,14 +22,13 @@ from fastai.vision.all import load_learner, defaults
 
 
 @contextmanager
-def set_posix_windows():
-    """Needed if the model was exported on Windows and is being loaded on Linux (Colab)."""
-    posix_backup = pathlib.PosixPath
+def set_windows_posix():
+    windows_backup = pathlib.WindowsPath
     try:
-        pathlib.PosixPath = pathlib.WindowsPath
+        pathlib.WindowsPath = pathlib.PosixPath
         yield
     finally:
-        pathlib.PosixPath = posix_backup
+        pathlib.WindowsPath = windows_backup
 
 
 def main():
