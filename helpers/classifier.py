@@ -83,7 +83,7 @@ def main():
 
     # --- 5. LOAD MODELS ONTO GPU ---
     with set_windows_posix():
-    learner = load_learner(args.trained_model, cpu=(device.type == "cpu"))
+        learner = load_learner(args.trained_model, cpu=(device.type == "cpu"))
 
     
     learner.dls.device = device
