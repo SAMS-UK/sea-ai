@@ -84,9 +84,24 @@ def main():
     horse_mussel_list = []
     northern_sea_fan_list = []
 
-    learner = load_learner(args.trained_model)
-    model_yolo = torch.hub.load("yolov5", "custom", path=args.weights, source="local")
 
+    # --- DETECT & SET GPU DEVICE ---
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"🚀 Inference Device: {device.type.upper()}")
+    if device.type == "cpu":
+        print("⚠️ WARNING: GPU not found. Running on CPU will be extremely slow!")
+
+    # --- LOAD MODELS ONTO GPU ---
+    learner = load_learner(args.trained_model)
+    learner.model.to(device) 
+    
+    model_yolo = torch.hub.load("yolov5", "custom", path=args.weights, source="local", device=device.type)
+    # ------------------------------
+
+    
+
+
+    
     frame_index = 0
     current_time = 0
     print("processing video!")
