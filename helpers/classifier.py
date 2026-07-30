@@ -82,8 +82,9 @@ def main():
         print("⚠️ WARNING: GPU not found. Running on CPU will be extremely slow!")
 
     # --- 5. LOAD MODELS ONTO GPU ---
-    with set_posix_windows():
-        learner = load_learner(args.trained_model, cpu=(device.type == "cpu"))
+    with set_windows_posix():
+    learner = load_learner(args.trained_model, cpu=(device.type == "cpu"))
+
     
     learner.dls.device = device
     learner.model = learner.model.to(device) 
