@@ -86,6 +86,8 @@ def main():
 
 
     # --- DETECT & SET GPU DEVICE ---
+    import torch
+    torch.cuda.is_available()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🚀 Inference Device: {device.type.upper()}")
     if device.type == "cpu":
