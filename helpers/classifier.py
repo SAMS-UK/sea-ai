@@ -4,16 +4,6 @@ pipeline_worker.py
 Runs the actual frame-extraction / classification pipeline as a standalone
 script, invoked via `subprocess.run([sys.executable, "pipeline_worker.py", ...])`
 from the notebook.
-
-Why this exists as a separate process rather than running inline in the
-notebook's kernel: Colab's kernel has numpy already imported (as part of its
-own startup) before any of the notebook's own pip installs run. Once a
-module with a compiled C extension like numpy is imported into a running
-process, reinstalling it on disk does nothing — the already-loaded module
-stays cached in memory for the life of that process. A subprocess is a
-genuinely new OS process with an empty module cache, so it imports the
-pinned numpy==1.26.4 (and pandas/fastai/etc.) fresh and correctly, with no
-kernel restart required.
 """
 import argparse
 import os
@@ -28,10 +18,7 @@ import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
-from fastai.vision.all import load_learner
-    # --- DETECT & SET GPU DEVICE ---
-from fastai.vision.all import defaults 
- 
+from fastai.vision.all import load_learner, defaults
 
 
 @contextmanager
@@ -42,7 +29,7 @@ def set_posix_windows():
         pathlib.PosixPath = pathlib.WindowsPath
         yield
     finally:
-        pathlib.PosixPath = posix_backup
+        pathlib.PosixPath = os.environ.get("POSIX_BACKUP", posix_backup)
 
 
 def main():
@@ -54,15 +41,9 @@ def main():
     parser.add_argument("--time-interval", type=int, default=5, help="Frame extraction interval, seconds")
     args = parser.parse_args()
 
-    print("imported libraries")
+    print("🚀 System: Libraries imported successfully.")
 
-    coords = pd.read_csv(args.coords)
-    coords["datetime"] = coords["date"] + " " + coords["time"]
-    coords["datetime"] = coords["datetime"].astype("datetime64[ns]")
-    coords["UNIXtime"] = (coords["datetime"] - pd.Timestamp("1970-01-01")) // pd.Timedelta("1millisecond")
-    coords = coords.drop(columns=["date", "time"])
-    coords = coords.set_index("datetime", drop=True)
-
+    # --- 1. SET UP OUTPUT FOLDERS ---
     folder_out = "./output/video_frames_test"
     if os.path.exists(folder_out):
         shutil.rmtree(folder_out)
@@ -73,10 +54,45 @@ def main():
         shutil.rmtree(folder_out_yolo)
     os.makedirs(folder_out_yolo)
 
-    cap = cv2.VideoCapture(args.video)
+    # --- 2. LOAD & PARSE DATAFRAME DATA ---
+    coords = pd.read_csv(args.coords)
+    coords["datetime"] = coords["date"] + " " + coords["time"]
+    coords["datetime"] = coords["datetime"].astype("datetime64[ns]")
+    coords["UNIXtime"] = (coords["datetime"] - pd.Timestamp("1970-01-01")) // pd.Timedelta("1millisecond")
+    coords = coords.drop(columns=["date", "time"])
+    coords = coords.set_index("datetime", drop=True)
 
     creation_time_datetime = coords.index[0]
 
+    # --- 3. PRE-COMPUTE COORDINATES IN MEMORY FOR SPEED ---
+    print("Caching coordinate data for fast interpolation...")
+    coord_unix = coords["UNIXtime"].to_numpy()
+    coord_lat = coords["latitude"].to_numpy()
+    coord_lon = coords["longitude"].to_numpy()
+
+    # --- 4. DETECT & SET GPU DEVICE ---
+    if torch.cuda.is_available():
+        device = torch.device("cuda:0")
+        defaults.device = device  
+        yolo_device = "0"  
+        print(f"🚀 Inference Device: {torch.cuda.get_device_name(0)} (GPU)")
+    else:
+        device = torch.device("cpu")
+        defaults.device = torch.device("cpu")
+        yolo_device = "cpu"
+        print("⚠️ WARNING: GPU not found. Running on CPU will be extremely slow!")
+
+    # --- 5. LOAD MODELS ONTO GPU ---
+    with set_posix_windows():
+        learner = load_learner(args.trained_model, cpu=(device.type == "cpu"))
+    
+    learner.dls.device = device
+    learner.model = learner.model.to(device) 
+    
+    model_yolo = torch.hub.load("yolov5", "custom", path=args.weights, source="local", device=yolo_device)
+    model_yolo.conf = 0.7
+
+    # --- 6. INITIALISE RESULTS ARRAYS ---
     timestamp_list = []
     filename_list = []
     prediction_list = []
@@ -87,101 +103,86 @@ def main():
     horse_mussel_list = []
     northern_sea_fan_list = []
 
-
-    # --- DETECT & SET GPU DEVICE ---
+    # --- 7. VIDEO STREAM CONFIGURATION ---
+    cap = cv2.VideoCapture(args.video)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0: 
+        fps = 30.0  
     
-    if torch.cuda.is_available():
-        device = torch.device(0)
-        defaults.device = device  
-        yolo_device = "0"  
-        print(f"🚀 Inference Device: {torch.cuda.get_device_name(0)} (GPU)")
-    else:
-        device = torch.device("cpu")
-        defaults.device = torch.device("cpu")
-        yolo_device = "cpu"
-        print("⚠️ WARNING: GPU not found. Running on CPU will be extremely slow!")
-
-    # --- LOAD MODELS ONTO GPU ---
-    learner = load_learner(args.trained_model, cpu=False)
+    frame_step = int(fps * args.time_interval)
+    frame_count = 0
     
-    # 🚀 CRITICAL FIX: Explicitly bind the device to fastai's dataloader structure 
-    # This prevents the 'AttributeError: device' during learner.predict()
-    learner.dls.device = device
-    learner.model.to(device) 
+    print("Processing video stream via GPU pipeline...")
     
-    # Pass yolo_device ("0" or "cpu") instead of device.type
-    model_yolo = torch.hub.load("yolov5", "custom", path=args.weights, source="local", device=yolo_device)
-    # ------------------------------
+    # Disable gradient tracking across the entire loop
+    with torch.no_grad():
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
+            if frame_count % frame_step == 0:
+                # High-speed timestamp math
+                frame_seconds = frame_count / fps
+                new_frame_timestamp_datetime = creation_time_datetime + timedelta(seconds=frame_seconds)
+                new_frame_timestamp_unix = int(
+                    (new_frame_timestamp_datetime - pd.Timestamp("1970-01-01")).total_seconds() * 1000
+                )
+                new_frame_timestamp = new_frame_timestamp_datetime.strftime("%Y-%m-%d_%H-%M-%S.%f")
 
+                # Fast image channel conversion
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_pil = Image.fromarray(frame_rgb)
 
+                # GPU Model Inferencing
+                pred, _, _ = learner.predict(frame_pil)
+                pred_label = "Yes" if pred == "maerl" else "No"
+                
+                yolo_results = model_yolo(frame_pil)
 
-    
-    frame_index = 0
-    current_time = 0
-    print("processing video!")
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+                # Extract class counts directly from CUDA output arrays
+                if len(yolo_results.xyxy[0]) > 0:
+                    detected_classes = yolo_results.xyxy[0][:, 5].cpu().numpy().astype(int)
+                else:
+                    detected_classes = []
+                
+                burrowing_sea_cucumber = "Yes" if 0 in detected_classes else "No"
+                horse_mussel = "Yes" if 1 in detected_classes else "No"
+                northern_sea_fan = "Yes" if 2 in detected_classes else "No"
 
-        frame_timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                # Fast memory-cached coordinate interpolation
+                latitude = np.interp(new_frame_timestamp_unix, coord_unix, coord_lat)
+                longitude = np.interp(new_frame_timestamp_unix, coord_unix, coord_lon)
 
-        if frame_timestamp >= current_time:
-            new_frame_timestamp_datetime = creation_time_datetime + timedelta(seconds=frame_timestamp)
-            new_frame_timestamp_unix = (
-                new_frame_timestamp_datetime - pd.Timestamp("1970-01-01")
-            ) // pd.Timedelta("1millisecond")
-            new_frame_timestamp = new_frame_timestamp_datetime.strftime("%Y-%m-%d_%H-%M-%S.%f")
+                filename = f"Frame_{new_frame_timestamp}_{frame_count:04d}.jpg"
+                image_path = os.path.join(folder_out, filename)
+                
+                timestamp_list.append(new_frame_timestamp)
+                filename_list.append(filename)
+                prediction_list.append(pred_label)
+                image_path_list.append(image_path)
+                burrowing_sea_cucumber_list.append(burrowing_sea_cucumber)
+                horse_mussel_list.append(horse_mussel)
+                northern_sea_fan_list.append(northern_sea_fan)
+                latitude_list.append(latitude)
+                longitude_list.append(longitude)
 
-            frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                # 🛑 OPTIONAL DISK SAVING: Uncomment to visually review frame detections on disk.
+                # WARNING: Will slow performance depending on drive speeds.
+                 frame_pil.save(image_path)
+                 image_path_yolo = os.path.join(folder_out_yolo, filename)
+                 Image.fromarray(yolo_results.render()[0]).save(image_path_yolo)
 
+                # Hard fast-forward the video capture buffer to skip processing frames we don't look at
+                frame_count += frame_step
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+                continue
 
-            pred, _, _ = learner.predict(frame_pil)
-            pred = "Yes" if pred == "maerl" else "No"
-            
-            model_yolo.conf = 0.7
-            yolo_results = model_yolo(frame_pil)
+            frame_count += 1
 
-            filename = f"Frame_{new_frame_timestamp}_{frame_index:04d}.jpg"
-            image_path = os.path.join(folder_out, filename)
-            frame_pil.save(image_path)
+    cap.release()
 
-            image_path_yolo = os.path.join(folder_out_yolo, filename)
-            Image.fromarray(yolo_results.render()[0]).save(image_path_yolo)
-
-            if not yolo_results.pandas().xyxy[0].empty:
-                classes = np.array(yolo_results.pandas().xyxy[0]["class"])
-                burrowing_sea_cucumber = "Yes" if 0 in classes else "No"
-                horse_mussel = "Yes" if 1 in classes else "No"
-                northern_sea_fan = "Yes" if 2 in classes else "No"
-            else:
-                burrowing_sea_cucumber = "No"
-                horse_mussel = "No"
-                northern_sea_fan = "No"
-
-            timestamp_list.append(new_frame_timestamp)
-            filename_list.append(filename)
-            prediction_list.append(pred)
-            image_path_list.append(image_path)
-            burrowing_sea_cucumber_list.append(burrowing_sea_cucumber)
-            horse_mussel_list.append(horse_mussel)
-            northern_sea_fan_list.append(northern_sea_fan)
-
-            matching_row = coords.loc[coords.index == new_frame_timestamp_datetime]
-            if not matching_row.empty:
-                latitude = matching_row["latitude"].iloc[0]
-                longitude = matching_row["longitude"].iloc[0]
-            else:
-                latitude = np.interp(new_frame_timestamp_unix, coords["UNIXtime"], coords["latitude"])
-                longitude = np.interp(new_frame_timestamp_unix, coords["UNIXtime"], coords["longitude"])
-
-            latitude_list.append(latitude)
-            longitude_list.append(longitude)
-
-            frame_index += 1
-            current_time += args.time_interval
-
+    # --- 8. BUILD AND EXPORT LOG CSV ---
     output_df = pd.DataFrame(
         {
             "Time": timestamp_list,
@@ -196,25 +197,18 @@ def main():
         }
     )
 
-    cap.release()
-
     csv_save_name = Path(args.video).stem + "_out.csv"
-    output_df.to_csv(csv_save_name)
+    output_df.to_csv(csv_save_name, index=False)
 
     print(f"\n{'=' * 50}")
     print("✅ Processing complete")
     print(f"Frames processed: {len(filename_list)}")
     print(f"Output CSV: {csv_save_name}")
-    print(f"Frames saved to: {folder_out}")
-    print(f"YOLO-annotated frames saved to: {folder_out_yolo}")
-    print(
-        f"Detections — BurrowingSeaCucumber: {burrowing_sea_cucumber_list.count('Yes')}, "
-        f"HorseMussel: {horse_mussel_list.count('Yes')}, "
-        f"NorthernSeaFan: {northern_sea_fan_list.count('Yes')}, "
-        f"Maerl: {prediction_list.count('Yes')}"
-    )
+    print(f"Detections — BurrowingSeaCucumber: {burrowing_sea_cucumber_list.count('Yes')}, "
+          f"HorseMussel: {horse_mussel_list.count('Yes')}, "
+          f"NorthernSeaFan: {northern_sea_fan_list.count('Yes')}, "
+          f"Maerl: {prediction_list.count('Yes')}")
     print(f"{'=' * 50}\n")
-    print(output_df.to_string())
 
 
 if __name__ == "__main__":
