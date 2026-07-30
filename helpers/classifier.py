@@ -169,9 +169,9 @@ def main():
 
                 # 🛑 OPTIONAL DISK SAVING: Uncomment to visually review frame detections on disk.
                 # WARNING: Will slow performance depending on drive speeds.
-                 frame_pil.save(image_path)
-                 image_path_yolo = os.path.join(folder_out_yolo, filename)
-                 Image.fromarray(yolo_results.render()[0]).save(image_path_yolo)
+                frame_pil.save(image_path)
+                image_path_yolo = os.path.join(folder_out_yolo, filename)
+                Image.fromarray(yolo_results.render()[0]).save(image_path_yolo)
 
                 # Hard fast-forward the video capture buffer to skip processing frames we don't look at
                 frame_count += frame_step
