@@ -130,11 +130,9 @@ def main():
             frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
 
-            # COMMENTED OUT FASTAI
-            #pred, _, _ = learner.predict(frame_pil)
-            #pred = "Yes" if pred == "maerl" else "No"
-            pred="Skipped"
-
+            pred, _, _ = learner.predict(frame_pil)
+            pred = "Yes" if pred == "maerl" else "No"
+            
             model_yolo.conf = 0.7
             yolo_results = model_yolo(frame_pil)
 
