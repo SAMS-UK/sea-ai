@@ -87,17 +87,22 @@ def main():
 
     # --- DETECT & SET GPU DEVICE ---
     import torch
-    torch.cuda.is_available()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"🚀 Inference Device: {device.type.upper()}")
-    if device.type == "cpu":
+    
+    if torch.cuda.is_available():
+        device = torch.device("cuda:0")
+        yolo_device = "0"  # YOLOv5 prefers the explicit string index "0" over "cuda"
+        print(f"🚀 Inference Device: {torch.cuda.get_device_name(0)} (GPU)")
+    else:
+        device = torch.device("cpu")
+        yolo_device = "cpu"
         print("⚠️ WARNING: GPU not found. Running on CPU will be extremely slow!")
 
     # --- LOAD MODELS ONTO GPU ---
     learner = load_learner(args.trained_model)
     learner.model.to(device) 
     
-    model_yolo = torch.hub.load("yolov5", "custom", path=args.weights, source="local", device=device.type)
+    # Pass yolo_device ("0" or "cpu") instead of device.type
+    model_yolo = torch.hub.load("yolov5", "custom", path=args.weights, source="local", device=yolo_device)
     # ------------------------------
 
     
