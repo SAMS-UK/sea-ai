@@ -90,7 +90,7 @@ def main():
     
     if torch.cuda.is_available():
         #device = torch.device("cuda:0")
-        device = torch.device("Tesla T4")
+        device = torch.device(0)
         yolo_device = "0"  # YOLOv5 prefers the explicit string index "0" over "cuda"
         print(f"🚀 Inference Device: {torch.cuda.get_device_name(0)} (GPU)")
     else:
