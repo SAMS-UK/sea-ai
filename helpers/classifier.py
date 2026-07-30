@@ -29,6 +29,9 @@ import pandas as pd
 import torch
 from PIL import Image
 from fastai.vision.all import load_learner
+    # --- DETECT & SET GPU DEVICE ---
+from fastai.vision.all import defaults 
+ 
 
 
 @contextmanager
@@ -87,11 +90,11 @@ def main():
 
     # --- DETECT & SET GPU DEVICE ---
     import torch
-    
+        
     if torch.cuda.is_available():
-        #device = torch.device("cuda:0")
         device = torch.device(0)
-        yolo_device = "0"  # YOLOv5 prefers the explicit string index "0" over "cuda"
+        defaults.device = device  # 🚀 CRITICAL: Forces fastai to use GPU for .predict()
+        yolo_device = "0"  
         print(f"🚀 Inference Device: {torch.cuda.get_device_name(0)} (GPU)")
     else:
         device = torch.device("cpu")
