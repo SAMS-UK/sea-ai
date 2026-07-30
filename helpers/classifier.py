@@ -99,7 +99,7 @@ def main():
         print("⚠️ WARNING: GPU not found. Running on CPU will be extremely slow!")
 
     # --- LOAD MODELS ONTO GPU ---
-    learner = load_learner(args.trained_model)
+    learner = load_learner(args.trained_model,cpu=False)
     learner.model.to(device) 
     
     # Pass yolo_device ("0" or "cpu") instead of device.type
