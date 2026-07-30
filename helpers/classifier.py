@@ -89,27 +89,31 @@ def main():
 
 
     # --- DETECT & SET GPU DEVICE ---
-    import torch
-        
+    
     if torch.cuda.is_available():
         device = torch.device(0)
-        defaults.device = device  # 🚀 CRITICAL: Forces fastai to use GPU for .predict()
+        defaults.device = device  
         yolo_device = "0"  
         print(f"🚀 Inference Device: {torch.cuda.get_device_name(0)} (GPU)")
     else:
         device = torch.device("cpu")
+        defaults.device = torch.device("cpu")
         yolo_device = "cpu"
         print("⚠️ WARNING: GPU not found. Running on CPU will be extremely slow!")
 
     # --- LOAD MODELS ONTO GPU ---
-    learner = load_learner(args.trained_model,cpu=False)
+    learner = load_learner(args.trained_model, cpu=False)
+    
+    # 🚀 CRITICAL FIX: Explicitly bind the device to fastai's dataloader structure 
+    # This prevents the 'AttributeError: device' during learner.predict()
+    learner.dls.device = device
     learner.model.to(device) 
     
     # Pass yolo_device ("0" or "cpu") instead of device.type
     model_yolo = torch.hub.load("yolov5", "custom", path=args.weights, source="local", device=yolo_device)
     # ------------------------------
 
-    
+
 
 
     
