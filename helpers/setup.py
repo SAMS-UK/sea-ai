@@ -18,11 +18,17 @@ def install_deps():
         "mplleaflet", "seaborn", "matplotlib", "ultralytics"
     ]
 
+    # Dynamically inject the scientific-python wheels index to support Python 3.13+ wheel lookups
+    pip_command = [
+        sys.executable, "-m", "pip", "install", "--no-cache-dir",
+        "--extra-index-url", "https://anaconda.org"
+    ] + dependencies
+
     f = io.StringIO()
     with contextlib.redirect_stdout(f):
         # Install packages silently
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--no-cache-dir"] + dependencies,
+            pip_command,
             capture_output=True, text=True
         )
 
