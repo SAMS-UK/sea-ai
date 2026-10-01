@@ -11,17 +11,17 @@ def install_deps():
     print("⏳ Installing pinned dependencies and cloning YOLOv5...", flush=True)
     print("⏳ This may take a few minutes. Get the kettle on.", flush=True)
     # 1. Pinned dependencies
+    # Alternate lightning-fast layout if secondary libraries cause build loops:
     dependencies = [
-        "numpy==1.26.4", "pandas==2.2.2", "scipy<1.14",
+        "numpy", "pandas==2.2.2", "scipy",  # Let pip pull native 3.13 wheels natively
         "fastai<2.8.0", "fastcore<1.8.0", "opencv-python-headless",
         "ffmpeg-python", "Pillow", "wget", "requests",
         "mplleaflet", "seaborn", "matplotlib", "ultralytics"
     ]
 
-    # Dynamically inject the scientific-python wheels index to support Python 3.13+ wheel lookups
+    # Cleaned pip array to pull directly and swiftly from the native registry
     pip_command = [
-        sys.executable, "-m", "pip", "install", "--no-cache-dir",
-        "--extra-index-url", "https://anaconda.org"
+        sys.executable, "-m", "pip", "install", "--no-cache-dir"
     ] + dependencies
 
     f = io.StringIO()
