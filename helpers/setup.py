@@ -13,7 +13,7 @@ def install_deps():
     # 1. Pinned dependencies
     # Alternate lightning-fast layout if secondary libraries cause build loops:
     dependencies = [
-        "numpy", "pandas==2.2.2", "scipy",  # Let pip pull native 3.13 wheels natively
+        "numpy", "pandas>=2.2.2", "scipy",  # Let pip pull native 3.13 wheels natively
         "fastai<2.8.0", "fastcore<1.8.0", "opencv-python-headless",
         "ffmpeg-python", "Pillow", "wget", "requests",
         "mplleaflet", "seaborn", "matplotlib", "ultralytics"
